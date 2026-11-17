@@ -37,9 +37,8 @@
 
     <div id="canvas-container"></div>
 
-    <!-- 本地端備用檔案選擇器 -->
+    <!-- 本地工具專用選擇器 (GitHub 線上版自動隱藏) -->
     <input type="file" id="spz-input" accept=".spz,.ply,.splat" class="hidden">
-    <!-- 切割 30.7MB 大檔案專用選擇器 -->
     <input type="file" id="split-input" accept=".spz" class="hidden">
 
     <div class="ui-layer">
@@ -47,8 +46,8 @@
         <div class="absolute top-4 left-4 right-4 flex flex-wrap justify-between items-center gap-2 pointer-auto">
             <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3">
                 <div>
-                    <h1 class="text-sm font-bold tracking-wider text-emerald-400">🏫 3D 實景虛擬校園漫遊 (第一人稱)</h1>
-                    <p id="location-status" class="text-xs text-amber-300 font-medium">⏳ 正在自動載入場景資料...</p>
+                    <h1 class="text-sm font-bold tracking-wider text-emerald-400">🏫 3D 實景虛擬校園漫遊</h1>
+                    <p id="location-status" class="text-xs text-amber-300 font-medium">⏳ 正在自動載入 3D 校園場景...</p>
                 </div>
                 <div class="bg-slate-900/90 border border-slate-700 px-2.5 py-1 rounded-xl text-center">
                     <div id="fps-counter" class="text-sm font-extrabold text-emerald-400">60 FPS</div>
@@ -57,48 +56,57 @@
             </div>
 
             <div class="glass-panel px-3 py-2 rounded-2xl flex flex-wrap gap-2.5 items-center">
-                <button id="load-spz-btn" class="px-3 py-1.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-500 transition font-bold shadow flex items-center gap-1">
-                    📂 手動載入 .spz
-                </button>
-
-                <button id="split-spz-btn" class="px-3 py-1.5 text-xs rounded-xl bg-purple-600 hover:bg-purple-500 transition font-bold shadow flex items-center gap-1" title="將超過 25MB 的 .spz 切成兩個 15MB 檔案以便直接上傳 GitHub 網頁">
-                    ✂️ 切割大檔 (突破 GitHub 25MB)
-                </button>
+                <!-- 僅在本機 file:// 模式下顯示的工具按鈕，上傳至 GitHub 後自動隱藏 -->
+                <div id="local-tools" class="hidden flex gap-2">
+                    <button id="load-spz-btn" class="px-3 py-1.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-500 transition font-bold shadow">
+                        📂 本機預覽 .spz
+                    </button>
+                    <button id="split-spz-btn" class="px-3 py-1.5 text-xs rounded-xl bg-purple-600 hover:bg-purple-500 transition font-bold shadow">
+                        ✂️ 切割大檔 (供 GitHub 上傳)
+                    </button>
+                </div>
 
                 <!-- 點雲數量控制 -->
                 <div class="flex items-center gap-1 text-xs">
                     <span class="text-amber-300 font-bold">⚡ 點數:</span>
                     <select id="quality-preset" class="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 outline-none">
                         <option value="400000">🚀 極速 (40萬點)</option>
-                        <option value="850000">⚡ 平衡 (85萬點)</option>
-                        <option value="1400000" selected>💎 高畫質 (140萬點 - 推薦)</option>
+                        <option value="650000" selected>⚡ 流暢高畫質 (65萬點 - 推薦)</option>
+                        <option value="1200000">💎 精細 (120萬點)</option>
                         <option value="2000000">👑 原生極致 (200萬全點)</option>
                     </select>
                 </div>
 
                 <!-- 畫面超採樣與高斯柔化控制 -->
                 <div class="flex items-center gap-1 text-xs">
-                    <span class="text-cyan-300 font-bold">🎨 畫質增強:</span>
+                    <span class="text-cyan-300 font-bold">🎨 畫質:</span>
                     <select id="render-quality" class="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 outline-none">
-                        <option value="perf">標準 (1.0x 效能優先)</option>
-                        <option value="hq" selected>細膩柔化 (Retina + 高斯抗鋸齒)</option>
-                        <option value="ultra">超採樣極致 (2.0x + 邊緣融合)</option>
+                        <option value="perf">流暢優先 (1.0x)</option>
+                        <option value="hq" selected>細膩柔化 (抗鋸齒)</option>
+                        <option value="ultra">超採樣極致 (2.0x)</option>
                     </select>
                 </div>
 
-                <button id="flip-btn" class="px-2.5 py-1.5 text-xs rounded-xl bg-slate-700 hover:bg-slate-600 transition font-medium">
-                    🔄 翻轉上下
-                </button>
-
                 <div class="flex items-center gap-1 text-xs text-emerald-300 font-bold">
                     <span>🏃 速度:</span>
-                    <input type="range" id="move-speed" min="0.01" max="0.40" step="0.01" value="0.08" class="w-16 accent-emerald-500">
-                    <span id="speed-val" class="w-7 text-right text-white">1.3x</span>
+                    <input type="range" id="move-speed" min="0.02" max="0.45" step="0.01" value="0.10" class="w-14 accent-emerald-500">
+                    <span id="speed-val" class="w-7 text-right text-white">1.5x</span>
                 </div>
 
                 <div class="flex items-center gap-1 text-xs text-gray-300">
                     <span>視線高度:</span>
-                    <input type="range" id="ground-offset" min="-6" max="6" step="0.05" value="-0.45" class="w-16 accent-emerald-500">
+                    <input type="range" id="ground-offset" min="-3" max="5" step="0.05" value="0.85" class="w-14 accent-emerald-500">
+                </div>
+
+                <!-- 水平傾斜與前後俯仰修正 -->
+                <div class="flex items-center gap-1 text-xs text-amber-200" title="調整畫面左右水平傾斜">
+                    <span>📐 水平校正:</span>
+                    <input type="range" id="roll-offset" min="-25" max="25" step="0.5" value="0" class="w-14 accent-amber-400">
+                </div>
+
+                <div class="flex items-center gap-1 text-xs text-amber-200" title="調整地面前後坡度">
+                    <span>坡度:</span>
+                    <input type="range" id="pitch-offset" min="-25" max="25" step="0.5" value="0" class="w-14 accent-amber-400">
                 </div>
 
                 <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer">
@@ -108,7 +116,7 @@
             </div>
         </div>
 
-        <!-- 電腦版控制介面：左下角方向鍵移動 + 右下角 WASD 轉向 (含按鍵發光提示) -->
+        <!-- 電腦版控制介面：左下角方向鍵移動 + 右下角 WASD 轉向 -->
         <div id="desktop-controls" class="hidden">
             <div class="absolute bottom-8 left-8 flex flex-col gap-2 pointer-auto items-center glass-panel p-4 rounded-2xl">
                 <div class="text-[11px] text-emerald-400 font-bold">🏃 移動腳步 (方向鍵)</div>
@@ -158,12 +166,16 @@
 
         let moveVector = { x: 0, z: 0 };
         let rotateAction = { w: false, s: false, a: false, d: false };
-        let isFlipped = true;
-        let moveSpeed = 0.08;
-        let eyeHeightOffset = -0.45;
-        let worldScale = 3.0;
+        let moveSpeed = 0.10;
+        // 提高預設視線高度偏移 (+0.85)，確保起始位置穩穩站在柏油路面上方
+        let eyeHeightOffset = 0.85;
+        let autoBaseEyeY = 0.5;
+        const WORLD_SCALE = 3.0;
 
-        let viewerPos = new THREE.Vector3(0, -0.45, 0);
+        // 自動水平校正後算出的基準旋轉四元數
+        let autoLevelQuat = new THREE.Quaternion();
+
+        let viewerPos = new THREE.Vector3(0, 1.35, 0);
         let playerYaw = 0;
         let cameraPitch = 0.0;
 
@@ -173,9 +185,14 @@
         let lastFpsTime = performance.now();
 
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|OperaMini/i.test(navigator.userAgent) || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        const isLocalFileProtocol = window.location.protocol === 'file:';
 
         function init() {
             const container = document.getElementById('canvas-container');
+
+            if (isLocalFileProtocol) {
+                document.getElementById('local-tools').classList.remove('hidden');
+            }
 
             if (isMobile) {
                 document.getElementById('mobile-controls').classList.remove('hidden');
@@ -204,9 +221,7 @@
             bindUIEvents();
             window.addEventListener('resize', onWindowResize);
 
-            // 開啟網頁時自動嘗試讀取分片檔 (.part1 + .part2) 或完整檔 (splats-1.spz)
-            autoLoadDefaultSpz();
-
+            autoLoadSpzFromServer();
             animate();
         }
 
@@ -215,54 +230,77 @@
             if (mode === 'perf') {
                 renderer.setPixelRatio(1.0);
             } else if (mode === 'hq') {
-                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.65));
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.35));
             } else {
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
             }
         }
 
-        // 支援自動合併讀取 splats-1.spz.part1 + part2 (突破 GitHub 25MB 網頁上傳限制)，若無分片則自動讀取 splats-1.spz
-        async function autoLoadDefaultSpz() {
-            const statusEl = document.getElementById('location-status');
-            try {
-                // 1. 優先嘗試載入切割後的兩個分片檔
-                const res1 = await fetch('./splats-1.spz.part1');
-                if (res1.ok) {
-                    statusEl.innerText = `⏳ 正在自動下載並合併分片檔 (part1 + part2)...`;
-                    const res2 = await fetch('./splats-1.spz.part2');
-                    if (!res2.ok) throw new Error('找不到 splats-1.spz.part2');
-
-                    const [buf1, buf2] = await Promise.all([res1.arrayBuffer(), res2.arrayBuffer()]);
-                    const combined = new Uint8Array(buf1.byteLength + buf2.byteLength);
-                    combined.set(new Uint8Array(buf1), 0);
-                    combined.set(new Uint8Array(buf2), buf1.byteLength);
-
-                    const ds = new DecompressionStream('gzip');
-                    const decompressedStream = new Blob([combined]).stream().pipeThrough(ds);
-                    cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
-                    await buildAndRenderSplatScene();
-                    return;
-                }
-
-                // 2. 若無分片檔，嘗試直接載入單一 splats-1.spz
-                const response = await fetch('./splats-1.spz');
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                statusEl.innerText = `⏳ 正在自動下載並解壓縮 splats-1.spz...`;
-                const ds = new DecompressionStream('gzip');
-                const decompressedStream = response.body.pipeThrough(ds);
-                cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
-                await buildAndRenderSplatScene();
-            } catch (err) {
-                console.log('本地模式提示:', err);
-                statusEl.innerText = `💡 本機模式：請點「📂 手動載入 .spz」預覽，或點「✂️ 切割大檔」產生兩個 15MB 分片以便上傳 GitHub`;
-                statusEl.className = 'text-xs text-amber-300 font-medium';
-            }
+        // 即時套用水平與坡度微調旋轉 (純旋轉不影響正數 Scale，不會造成黑屏)
+        function updateSceneLevelRotation() {
+            if (!splatMesh) return;
+            const rollDeg = parseFloat(document.getElementById('roll-offset').value) || 0;
+            const pitchDeg = parseFloat(document.getElementById('pitch-offset').value) || 0;
+            const manualEuler = new THREE.Euler(
+                THREE.MathUtils.degToRad(pitchDeg),
+                0,
+                THREE.MathUtils.degToRad(rollDeg),
+                'XYZ'
+            );
+            const manualQuat = new THREE.Quaternion().setFromEuler(manualEuler);
+            splatMesh.quaternion.copy(manualQuat);
         }
 
-        // 將 30.7MB 的 .spz 平分成兩個 ~15.3MB 的檔案 (.part1 與 .part2) 自動觸發瀏覽器下載
+        async function autoLoadSpzFromServer() {
+            const statusEl = document.getElementById('location-status');
+            if (isLocalFileProtocol) {
+                statusEl.innerText = `💡 本機模式：請點右側「📂 本機預覽 .spz」測試，或點「✂️ 切割大檔」切出分片上傳 GitHub`;
+                return;
+            }
+
+            const candidatePrefixes = ['./splats-2.spz', './splats-1.spz'];
+
+            for (const prefix of candidatePrefixes) {
+                try {
+                    const res1 = await fetch(`${prefix}.part1`);
+                    if (res1.ok) {
+                        statusEl.innerText = `⏳ 正在下載並組合 3D 校園場景 (${prefix.replace('./', '')})...`;
+                        const res2 = await fetch(`${prefix}.part2`);
+                        if (!res2.ok) throw new Error(`缺少 ${prefix}.part2`);
+
+                        const [buf1, buf2] = await Promise.all([res1.arrayBuffer(), res2.arrayBuffer()]);
+                        const combined = new Uint8Array(buf1.byteLength + buf2.byteLength);
+                        combined.set(new Uint8Array(buf1), 0);
+                        combined.set(new Uint8Array(buf2), buf1.byteLength);
+
+                        const ds = new DecompressionStream('gzip');
+                        const decompressedStream = new Blob([combined]).stream().pipeThrough(ds);
+                        cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
+                        await buildAndRenderSplatScene();
+                        return;
+                    }
+
+                    const resSingle = await fetch(prefix);
+                    if (resSingle.ok) {
+                        statusEl.innerText = `⏳ 正在下載並解壓縮 ${prefix.replace('./', '')}...`;
+                        const ds = new DecompressionStream('gzip');
+                        const decompressedStream = resSingle.body.pipeThrough(ds);
+                        cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
+                        await buildAndRenderSplatScene();
+                        return;
+                    }
+                } catch (e) {
+                    console.warn(`嘗試讀取 ${prefix} 失敗:`, e);
+                }
+            }
+
+            statusEl.innerText = `❌ 未找到場景檔，請確認 GitHub 中已上傳 splats-2.spz.part1 / .part2 或 splats-1.spz.part1 / .part2`;
+            statusEl.className = 'text-xs text-red-400 font-bold';
+        }
+
         async function splitSpzFileForGitHub(file) {
             const statusEl = document.getElementById('location-status');
-            statusEl.innerText = `⏳ 正在將 ${file.name} (${(file.size / 1048576).toFixed(1)} MB) 切割為兩個小於 25MB 的分片...`;
+            statusEl.innerText = `⏳ 正在將 ${file.name} (${(file.size / 1048576).toFixed(1)} MB) 切割為兩個分片...`;
             const mid = Math.ceil(file.size / 2);
             const part1Blob = file.slice(0, mid);
             const part2Blob = file.slice(mid);
@@ -278,18 +316,12 @@
                 setTimeout(() => URL.revokeObjectURL(url), 5000);
             };
 
-            downloadBlob(part1Blob, 'splats-1.spz.part1');
+            downloadBlob(part1Blob, `${file.name}.part1`);
             setTimeout(() => {
-                downloadBlob(part2Blob, 'splats-1.spz.part2');
-                statusEl.innerText = `✅ 已成功切出 splats-1.spz.part1 與 .part2！請將這兩個檔案與 index.html 一起拖曳上傳至 GitHub`;
+                downloadBlob(part2Blob, `${file.name}.part2`);
+                statusEl.innerText = `✅ 已切出 ${file.name}.part1 與 .part2！請連同此 index.html 一起上傳至 GitHub`;
                 statusEl.className = 'text-xs text-emerald-300 font-bold';
             }, 600);
-        }
-
-        function updateSplatTransform() {
-            if (!splatMesh) return;
-            const s = worldScale;
-            splatMesh.scale.set(s, isFlipped ? -s : s, s);
         }
 
         function bindUIEvents() {
@@ -324,14 +356,9 @@
                 if (cachedRawSpzBuffer) await buildAndRenderSplatScene();
             });
 
-            document.getElementById('flip-btn').addEventListener('click', () => {
-                isFlipped = !isFlipped;
-                updateSplatTransform();
-            });
-
             document.getElementById('move-speed').addEventListener('input', (e) => {
                 moveSpeed = parseFloat(e.target.value);
-                const mult = (moveSpeed / 0.06).toFixed(1);
+                const mult = (moveSpeed / 0.066).toFixed(1);
                 document.getElementById('speed-val').innerText = `${mult}x`;
             });
 
@@ -339,6 +366,9 @@
                 eyeHeightOffset = parseFloat(e.target.value);
                 viewerPos.y = getGroundHeightFast(viewerPos.x, viewerPos.z);
             });
+
+            document.getElementById('roll-offset').addEventListener('input', updateSceneLevelRotation);
+            document.getElementById('pitch-offset').addEventListener('input', updateSceneLevelRotation);
         }
 
         async function buildAndRenderSplatScene() {
@@ -346,13 +376,13 @@
             const maxBudget = parseInt(document.getElementById('quality-preset').value, 10);
             const renderMode = document.getElementById('render-quality').value;
             const statusEl = document.getElementById('location-status');
-            statusEl.innerText = `⏳ 正在建構高畫質 3D 校園場景...`;
+            statusEl.innerText = `⏳ 正在自動水平校正並建構 3D 校園場景...`;
             statusEl.className = 'text-xs text-amber-300 font-bold';
 
             await new Promise(r => setTimeout(r, 30));
 
             try {
-                const { splatArrayBuffer, keptPoints, totalPoints } = convertSpzOptimized(cachedRawSpzBuffer, maxBudget, renderMode);
+                const { splatArrayBuffer, keptPoints, totalPoints, tiltAngleDeg } = convertSpzAutoLeveled(cachedRawSpzBuffer, maxBudget, renderMode);
 
                 if (splatViewer) {
                     scene.remove(splatMesh);
@@ -367,7 +397,7 @@
                     integerBasedSort: true,
                     dynamicScene: false,
                     antialiased: isHQ,
-                    focalAdjustment: renderMode === 'ultra' ? 1.22 : (isHQ ? 1.14 : 1.05),
+                    focalAdjustment: renderMode === 'ultra' ? 1.20 : (isHQ ? 1.12 : 1.05),
                     maxScreenSpaceSplatSize: renderMode === 'ultra' ? 256 : 160
                 });
 
@@ -377,16 +407,17 @@
                 await splatViewer.addSplatScenes([{
                     path: blobUrl,
                     format: GaussianSplats3D.SceneFormat.Splat,
-                    splatAlphaRemovalThreshold: isHQ ? 12 : 25
+                    splatAlphaRemovalThreshold: isHQ ? 14 : 25
                 }], false);
 
                 splatMesh = splatViewer;
+                splatMesh.scale.set(WORLD_SCALE, WORLD_SCALE, WORLD_SCALE);
+                updateSceneLevelRotation();
                 scene.add(splatMesh);
-                updateSplatTransform();
 
-                viewerPos.y = getGroundHeightFast(viewerPos.x, viewerPos.z);
+                viewerPos.set(0, getGroundHeightFast(0, 0), 0);
 
-                statusEl.innerText = `✅ 校園場景載入完成！目前渲染 ${keptPoints.toLocaleString()} 點 (原 ${totalPoints.toLocaleString()} 點)`;
+                statusEl.innerText = `✅ 校園載入完成 (已自動修正傾斜 ${tiltAngleDeg.toFixed(1)}°)！目前渲染 ${keptPoints.toLocaleString()} 點`;
                 statusEl.className = 'text-xs text-emerald-300 font-bold';
             } catch (err) {
                 console.error('載入錯誤:', err);
@@ -395,7 +426,8 @@
             }
         }
 
-        function convertSpzOptimized(buffer, maxBudget, renderMode) {
+        // 自動擬合地面法向量將歪斜的世界轉正，並排除地底雜訊點計算真實路面高度
+        function convertSpzAutoLeveled(buffer, maxBudget, renderMode) {
             const view = new DataView(buffer);
             const bytes = new Uint8Array(buffer);
             const magic = view.getUint32(0, true);
@@ -436,30 +468,129 @@
 
             const rawRots = new Uint8Array(buffer, offset, numPoints * 3);
 
-            const alphaCutoff = renderMode === 'perf' ? 26 : 12;
+            // 第一步：收集中心區域 (x, z 在 -10 ~ +10 之間) 各網格的地面候選點，用來自動計算路面的傾斜平面 y = a*x + b*z + c
+            const cellBuckets = new Map();
+            const sampleStride = Math.max(1, Math.floor(numPoints / 80000));
+            for (let i = 0; i < numPoints; i += sampleStride) {
+                if (alphas[i] < 180) continue;
+                const px = positions[i * 3 + 0];
+                const py = positions[i * 3 + 1];
+                const pz = positions[i * 3 + 2];
+                if (Math.abs(px) < 10 && Math.abs(pz) < 10 && py > -2.5 && py < 0.8) {
+                    const gx = Math.round(px);
+                    const gz = Math.round(pz);
+                    const key = `${gx},${gz}`;
+                    let arr = cellBuckets.get(key);
+                    if (!arr) { arr = []; cellBuckets.set(key, arr); }
+                    arr.push({ x: px, y: py, z: pz });
+                }
+            }
+
+            // 取每個網格中第 25% 分位數高度的點作為真實路面代表點 (過濾地底深處的鏡像雜訊點)
+            const groundFitPts = [];
+            cellBuckets.forEach(arr => {
+                if (arr.length >= 4) {
+                    arr.sort((p1, p2) => p1.y - p2.y);
+                    groundFitPts.push(arr[Math.floor(arr.length * 0.25)]);
+                }
+            });
+
+            // 最小平方法 (Least Squares Plane Fitting) 求解路面傾斜率 a (左右傾斜) 與 b (前後坡度)
+            let tiltAngleDeg = 0;
+            autoLevelQuat.identity();
+
+            if (groundFitPts.length >= 12) {
+                let mx = 0, my = 0, mz = 0;
+                for (const p of groundFitPts) { mx += p.x; my += p.y; mz += p.z; }
+                mx /= groundFitPts.length; my /= groundFitPts.length; mz /= groundFitPts.length;
+
+                let sxx = 0, szz = 0, sxz = 0, sxy = 0, szy = 0;
+                for (const p of groundFitPts) {
+                    const dx = p.x - mx, dy = p.y - my, dz = p.z - mz;
+                    sxx += dx * dx;
+                    szz += dz * dz;
+                    sxz += dx * dz;
+                    sxy += dx * dy;
+                    szy += dz * dy;
+                }
+                const det = sxx * szz - sxz * sxz;
+                if (Math.abs(det) > 1e-5) {
+                    const a = (sxy * szz - szy * sxz) / det;
+                    const b = (szy * sxx - sxy * sxz) / det;
+                    // 路面法向量 n = (-a, 1, -b) 正規化
+                    const groundNormal = new THREE.Vector3(-a, 1.0, -b).normalize();
+                    const upVec = new THREE.Vector3(0, 1, 0);
+                    const angleRad = groundNormal.angleTo(upVec);
+                    // 限制最大自動修正角度在 28 度以內，確保穩定安全
+                    if (angleRad > 0.005 && angleRad < 0.5) {
+                        autoLevelQuat.setFromUnitVectors(groundNormal, upVec);
+                        tiltAngleDeg = THREE.MathUtils.radToDeg(angleRad);
+                    }
+                }
+            }
+
+            // 將四元數轉為快速 3x3 旋轉矩陣，直接把所有頂點與高斯橢圓旋轉至水平
+            const rotMat = new THREE.Matrix4().makeRotationFromQuaternion(autoLevelQuat);
+            const me = rotMat.elements;
+            const m00 = me[0], m01 = me[4], m02 = me[8];
+            const m10 = me[1], m11 = me[5], m12 = me[9];
+            const m20 = me[2], m21 = me[6], m22 = me[10];
+            const qx = autoLevelQuat.x, qy = autoLevelQuat.y, qz = autoLevelQuat.z, qw = autoLevelQuat.w;
+
+            const alphaCutoff = renderMode === 'perf' ? 26 : 14;
             const validIndices = [];
-            groundGridMap.clear();
+            const gridBuckets = new Map();
+            const originAreaYs = [];
 
             for (let i = 0; i < numPoints; i++) {
                 const a = alphas[i];
                 if (a < alphaCutoff) continue;
 
-                const px = positions[i * 3];
-                const py = positions[i * 3 + 1];
-                const pz = positions[i * 3 + 2];
+                const ox = positions[i * 3 + 0];
+                const oy = positions[i * 3 + 1];
+                const oz = positions[i * 3 + 2];
+
+                // 套用自動水平旋轉矩陣
+                const px = m00 * ox + m01 * oy + m02 * oz;
+                const py = m10 * ox + m11 * oy + m12 * oz;
+                const pz = m20 * ox + m21 * oy + m22 * oz;
+
+                positions[i * 3 + 0] = px;
+                positions[i * 3 + 1] = py;
+                positions[i * 3 + 2] = pz;
+
                 if (Math.abs(px) > 150 || Math.abs(py) > 150 || Math.abs(pz) > 150) continue;
 
                 validIndices.push(i);
 
-                if (a > 190 && Math.abs(px) < 25 && Math.abs(pz) < 25) {
-                    const gx = Math.round(px * 2);
-                    const gz = Math.round(pz * 2);
+                // 取樣路面點 (排除 py < -1.8 的地底幽靈雜訊點)
+                if (a > 200 && Math.abs(px) < 25 && Math.abs(pz) < 25 && py > -1.8 && py < 0.5) {
+                    const gx = Math.round(px);
+                    const gz = Math.round(pz);
                     const key = `${gx},${gz}`;
-                    const prevY = groundGridMap.get(key);
-                    if (prevY === undefined || py > prevY) {
-                        groundGridMap.set(key, py);
+                    let bArr = gridBuckets.get(key);
+                    if (!bArr) { bArr = []; gridBuckets.set(key, bArr); }
+                    if (bArr.length < 25) bArr.push(py);
+
+                    if (Math.abs(px) < 5 && Math.abs(pz) < 5) {
+                        originAreaYs.push(py);
                     }
                 }
+            }
+
+            // 建立每個網格的真實路面高度 (取第 30% 分位數，徹底避開地底雜訊點)
+            groundGridMap.clear();
+            gridBuckets.forEach((arr, key) => {
+                arr.sort((a, b) => a - b);
+                groundGridMap.set(key, arr[Math.floor(arr.length * 0.3)]);
+            });
+
+            if (originAreaYs.length > 10) {
+                originAreaYs.sort((a, b) => a - b);
+                const groundY = originAreaYs[Math.floor(originAreaYs.length * 0.35)];
+                autoBaseEyeY = (groundY * WORLD_SCALE) + 0.85;
+            } else {
+                autoBaseEyeY = 0.5;
             }
 
             const totalValid = validIndices.length;
@@ -497,36 +628,39 @@
                 outUint8[bBase + 26] = Math.max(0, Math.min(255, Math.round(c2 * 255)));
                 outUint8[bBase + 27] = alphas[i];
 
+                // 同步將每個高斯橢圓的四元數左乘 autoLevelQuat，使橢圓面片與轉正後的牆面完美貼合
                 const rx = (rawRots[i * 3 + 0] / 127.5) - 1.0;
                 const ry = (rawRots[i * 3 + 1] / 127.5) - 1.0;
                 const rz = (rawRots[i * 3 + 2] / 127.5) - 1.0;
                 const rw = Math.sqrt(Math.max(0.0, 1.0 - (rx * rx + ry * ry + rz * rz)));
 
-                outUint8[bBase + 28] = Math.max(0, Math.min(255, Math.round(rw * 128 + 128)));
-                outUint8[bBase + 29] = Math.max(0, Math.min(255, Math.round(rx * 128 + 128)));
-                outUint8[bBase + 30] = Math.max(0, Math.min(255, Math.round(ry * 128 + 128)));
-                outUint8[bBase + 31] = Math.max(0, Math.min(255, Math.round(rz * 128 + 128)));
+                const nw = qw * rw - qx * rx - qy * ry - qz * rz;
+                const nx = qw * rx + qx * rw + qy * rz - qz * ry;
+                const ny = qw * ry - qx * rz + qy * rw + qz * rx;
+                const nz = qw * rz + qx * ry - qy * rx + qz * rw;
+
+                outUint8[bBase + 28] = Math.max(0, Math.min(255, Math.round(nw * 128 + 128)));
+                outUint8[bBase + 29] = Math.max(0, Math.min(255, Math.round(nx * 128 + 128)));
+                outUint8[bBase + 30] = Math.max(0, Math.min(255, Math.round(ny * 128 + 128)));
+                outUint8[bBase + 31] = Math.max(0, Math.min(255, Math.round(nz * 128 + 128)));
             }
 
-            return { splatArrayBuffer: outBuffer, keptPoints: keptCount, totalPoints: numPoints };
+            return { splatArrayBuffer: outBuffer, keptPoints: keptCount, totalPoints: numPoints, tiltAngleDeg };
         }
 
         function getGroundHeightFast(worldX, worldZ) {
             const autoGround = document.getElementById('auto-ground-chk').checked;
             if (!autoGround || groundGridMap.size === 0) {
-                return eyeHeightOffset;
+                return autoBaseEyeY + eyeHeightOffset;
             }
-            const s = worldScale;
-            const gx = Math.round((worldX / s) * 2);
-            const gz = Math.round((worldZ / s) * 2);
+            const gx = Math.round(worldX / WORLD_SCALE);
+            const gz = Math.round(worldZ / WORLD_SCALE);
             const rawY = groundGridMap.get(`${gx},${gz}`);
             if (rawY !== undefined) {
-                const wy = (isFlipped ? -rawY : rawY) * s;
-                if (wy > -6 && wy < 2) {
-                    return wy + eyeHeightOffset + 1.1;
-                }
+                const wy = rawY * WORLD_SCALE;
+                return wy + 0.85 + eyeHeightOffset;
             }
-            return eyeHeightOffset;
+            return autoBaseEyeY + eyeHeightOffset;
         }
 
         function decodeFloat16(uint16) {
