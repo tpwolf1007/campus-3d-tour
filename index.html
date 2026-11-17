@@ -39,6 +39,8 @@
 
     <!-- 本地端備用檔案選擇器 -->
     <input type="file" id="spz-input" accept=".spz,.ply,.splat" class="hidden">
+    <!-- 切割 30.7MB 大檔案專用選擇器 -->
+    <input type="file" id="split-input" accept=".spz" class="hidden">
 
     <div class="ui-layer">
         <!-- 頂部控制列 -->
@@ -46,7 +48,7 @@
             <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3">
                 <div>
                     <h1 class="text-sm font-bold tracking-wider text-emerald-400">🏫 3D 實景虛擬校園漫遊 (第一人稱)</h1>
-                    <p id="location-status" class="text-xs text-amber-300 font-medium">⏳ 正在自動尋找並載入同目錄下的 splats-1.spz...</p>
+                    <p id="location-status" class="text-xs text-amber-300 font-medium">⏳ 正在自動載入場景資料...</p>
                 </div>
                 <div class="bg-slate-900/90 border border-slate-700 px-2.5 py-1 rounded-xl text-center">
                     <div id="fps-counter" class="text-sm font-extrabold text-emerald-400">60 FPS</div>
@@ -55,9 +57,12 @@
             </div>
 
             <div class="glass-panel px-3 py-2 rounded-2xl flex flex-wrap gap-2.5 items-center">
-                <!-- 當在本地 file:// 開啟被擋時，可手動選取；在 GitHub Pages 上會自動載入 -->
                 <button id="load-spz-btn" class="px-3 py-1.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-500 transition font-bold shadow flex items-center gap-1">
                     📂 手動載入 .spz
+                </button>
+
+                <button id="split-spz-btn" class="px-3 py-1.5 text-xs rounded-xl bg-purple-600 hover:bg-purple-500 transition font-bold shadow flex items-center gap-1" title="將超過 25MB 的 .spz 切成兩個 15MB 檔案以便直接上傳 GitHub 網頁">
+                    ✂️ 切割大檔 (突破 GitHub 25MB)
                 </button>
 
                 <!-- 點雲數量控制 -->
@@ -71,7 +76,7 @@
                     </select>
                 </div>
 
-                <!-- 畫面超採樣與高斯柔化控制（解決顆粒感） -->
+                <!-- 畫面超採樣與高斯柔化控制 -->
                 <div class="flex items-center gap-1 text-xs">
                     <span class="text-cyan-300 font-bold">🎨 畫質增強:</span>
                     <select id="render-quality" class="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 outline-none">
@@ -148,9 +153,6 @@
         import * as THREE from 'three';
         import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
 
-        // 預設自動載入同資料夾底下的檔名
-        const DEFAULT_SPZ_FILENAME = './splats-1.spz';
-
         let scene, camera, renderer, splatViewer = null, splatMesh = null;
         let cachedRawSpzBuffer = null;
 
@@ -161,12 +163,10 @@
         let eyeHeightOffset = -0.45;
         let worldScale = 3.0;
 
-        // 第一人稱相機位置與面向角度
         let viewerPos = new THREE.Vector3(0, -0.45, 0);
         let playerYaw = 0;
         let cameraPitch = 0.0;
 
-        // O(1) 地面高度網格索引
         let groundGridMap = new Map();
 
         let frameCount = 0;
@@ -204,7 +204,7 @@
             bindUIEvents();
             window.addEventListener('resize', onWindowResize);
 
-            // 開啟網頁時自動嘗試讀取同資料夾下的 splats-1.spz
+            // 開啟網頁時自動嘗試讀取分片檔 (.part1 + .part2) 或完整檔 (splats-1.spz)
             autoLoadDefaultSpz();
 
             animate();
@@ -221,22 +221,69 @@
             }
         }
 
-        // 自動從同目錄載入 splats-1.spz (部署在 GitHub Pages 或伺服器時會自動成功)
+        // 支援自動合併讀取 splats-1.spz.part1 + part2 (突破 GitHub 25MB 網頁上傳限制)，若無分片則自動讀取 splats-1.spz
         async function autoLoadDefaultSpz() {
             const statusEl = document.getElementById('location-status');
             try {
-                const response = await fetch(DEFAULT_SPZ_FILENAME);
+                // 1. 優先嘗試載入切割後的兩個分片檔
+                const res1 = await fetch('./splats-1.spz.part1');
+                if (res1.ok) {
+                    statusEl.innerText = `⏳ 正在自動下載並合併分片檔 (part1 + part2)...`;
+                    const res2 = await fetch('./splats-1.spz.part2');
+                    if (!res2.ok) throw new Error('找不到 splats-1.spz.part2');
+
+                    const [buf1, buf2] = await Promise.all([res1.arrayBuffer(), res2.arrayBuffer()]);
+                    const combined = new Uint8Array(buf1.byteLength + buf2.byteLength);
+                    combined.set(new Uint8Array(buf1), 0);
+                    combined.set(new Uint8Array(buf2), buf1.byteLength);
+
+                    const ds = new DecompressionStream('gzip');
+                    const decompressedStream = new Blob([combined]).stream().pipeThrough(ds);
+                    cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
+                    await buildAndRenderSplatScene();
+                    return;
+                }
+
+                // 2. 若無分片檔，嘗試直接載入單一 splats-1.spz
+                const response = await fetch('./splats-1.spz');
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                statusEl.innerText = `⏳ 正在自動下載並解壓縮 ${DEFAULT_SPZ_FILENAME}...`;
+                statusEl.innerText = `⏳ 正在自動下載並解壓縮 splats-1.spz...`;
                 const ds = new DecompressionStream('gzip');
                 const decompressedStream = response.body.pipeThrough(ds);
                 cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
                 await buildAndRenderSplatScene();
             } catch (err) {
-                console.log('本地 file:// 模式無法自動 fetch，請點擊右上角手動選擇檔案:', err);
-                statusEl.innerText = `💡 本機直接開啟模式：請點右側「📂 手動載入 .spz」選取 splats-1.spz (上傳至 GitHub 後即會自動載入)`;
+                console.log('本地模式提示:', err);
+                statusEl.innerText = `💡 本機模式：請點「📂 手動載入 .spz」預覽，或點「✂️ 切割大檔」產生兩個 15MB 分片以便上傳 GitHub`;
                 statusEl.className = 'text-xs text-amber-300 font-medium';
             }
+        }
+
+        // 將 30.7MB 的 .spz 平分成兩個 ~15.3MB 的檔案 (.part1 與 .part2) 自動觸發瀏覽器下載
+        async function splitSpzFileForGitHub(file) {
+            const statusEl = document.getElementById('location-status');
+            statusEl.innerText = `⏳ 正在將 ${file.name} (${(file.size / 1048576).toFixed(1)} MB) 切割為兩個小於 25MB 的分片...`;
+            const mid = Math.ceil(file.size / 2);
+            const part1Blob = file.slice(0, mid);
+            const part2Blob = file.slice(mid);
+
+            const downloadBlob = (blob, name) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 5000);
+            };
+
+            downloadBlob(part1Blob, 'splats-1.spz.part1');
+            setTimeout(() => {
+                downloadBlob(part2Blob, 'splats-1.spz.part2');
+                statusEl.innerText = `✅ 已成功切出 splats-1.spz.part1 與 .part2！請將這兩個檔案與 index.html 一起拖曳上傳至 GitHub`;
+                statusEl.className = 'text-xs text-emerald-300 font-bold';
+            }, 600);
         }
 
         function updateSplatTransform() {
@@ -257,6 +304,14 @@
                     const decompressedStream = file.stream().pipeThrough(ds);
                     cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
                     await buildAndRenderSplatScene();
+                }
+            });
+
+            const splitInput = document.getElementById('split-input');
+            document.getElementById('split-spz-btn').addEventListener('click', () => splitInput.click());
+            splitInput.addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    splitSpzFileForGitHub(e.target.files[0]);
                 }
             });
 
@@ -305,7 +360,6 @@
                     splatViewer = null;
                 }
 
-                // 根據畫質設定開啟高斯抗鋸齒與柔和核函數調整，消除銳利顆粒感
                 const isHQ = renderMode !== 'perf';
                 splatViewer = new GaussianSplats3D.DropInViewer({
                     gpuAcceleratedSort: false,
@@ -410,7 +464,6 @@
 
             const totalValid = validIndices.length;
             const keepRatio = Math.min(1.0, maxBudget / Math.max(1, totalValid));
-            // 微調橢圓重疊係數，使磁磚與樹葉邊緣更加柔順連貫
             const smoothBoost = renderMode === 'ultra' ? 1.15 : (renderMode === 'hq' ? 1.08 : 1.0);
             const areaCompensation = Math.min(1.5, Math.pow(1.0 / keepRatio, 0.25)) * smoothBoost;
 
@@ -619,14 +672,12 @@
                 lastFpsTime = now;
             }
 
-            // 1. 第一人稱 WASD 轉頭：A 原地左轉、D 原地右轉、W 抬頭、S 低頭
             const rotSpeed = 0.026;
             if (rotateAction.a) playerYaw += rotSpeed;
             if (rotateAction.d) playerYaw -= rotSpeed;
             if (rotateAction.w) cameraPitch = Math.min(1.0, cameraPitch + rotSpeed);
             if (rotateAction.s) cameraPitch = Math.max(-1.0, cameraPitch - rotSpeed);
 
-            // 2. 第一人稱方向鍵移動（永遠朝當前視線正前方直走/橫移）
             const forwardX = -Math.sin(playerYaw);
             const forwardZ = -Math.cos(playerYaw);
             const rightX = Math.cos(playerYaw);
@@ -643,7 +694,6 @@
             const targetY = getGroundHeightFast(viewerPos.x, viewerPos.z);
             viewerPos.y += (targetY - viewerPos.y) * 0.2;
 
-            // 3. 更新第一人稱相機位置與視線目標
             camera.position.copy(viewerPos);
             const lookDirX = forwardX * Math.cos(cameraPitch);
             const lookDirY = Math.sin(cameraPitch);
