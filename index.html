@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 實景虛擬校園漫遊系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050811; font-family: system-ui, -apple-system, sans-serif; touch-action: none; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; position: fixed; top: 0; left: 0; z-index: 0; }
+        .ui-layer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 100; pointer-events: none; }
+        .pointer-auto { pointer-events: auto; }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.88);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        .key-active {
+            background-color: #059669 !important;
+            border-color: #34d399 !important;
+            box-shadow: 0 0 20px rgba(52, 211, 153, 0.85);
+            transform: scale(0.95);
+        }
+    </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+            "@mkkellogg/gaussian-splats-3d": "https://cdn.jsdelivr.net/npm/@mkkellogg/gaussian-splats-3d@0.4.6/build/gaussian-splats-3d.module.js"
+        }
+    }
+    </script>
+</head>
+<body class="text-white select-none">
+
+    <div id="canvas-container"></div>
+
+    <!-- 本地端備用檔案選擇器 -->
+    <input type="file" id="spz-input" accept=".spz,.ply,.splat" class="hidden">
+
+    <div class="ui-layer">
+        <!-- 頂部控制列 -->
+        <div class="absolute top-4 left-4 right-4 flex flex-wrap justify-between items-center gap-2 pointer-auto">
+            <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3">
+                <div>
+                    <h1 class="text-sm font-bold tracking-wider text-emerald-400">🏫 3D 實景虛擬校園漫遊 (第一人稱)</h1>
+                    <p id="location-status" class="text-xs text-amber-300 font-medium">⏳ 正在自動尋找並載入同目錄下的 splats-1.spz...</p>
+                </div>
+                <div class="bg-slate-900/90 border border-slate-700 px-2.5 py-1 rounded-xl text-center">
+                    <div id="fps-counter" class="text-sm font-extrabold text-emerald-400">60 FPS</div>
+                    <div class="text-[9px] text-gray-400">流暢度</div>
+                </div>
+            </div>
+
+            <div class="glass-panel px-3 py-2 rounded-2xl flex flex-wrap gap-2.5 items-center">
+                <!-- 當在本地 file:// 開啟被擋時，可手動選取；在 GitHub Pages 上會自動載入 -->
+                <button id="load-spz-btn" class="px-3 py-1.5 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-500 transition font-bold shadow flex items-center gap-1">
+                    📂 手動載入 .spz
+                </button>
+
+                <!-- 點雲數量控制 -->
+                <div class="flex items-center gap-1 text-xs">
+                    <span class="text-amber-300 font-bold">⚡ 點數:</span>
+                    <select id="quality-preset" class="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 outline-none">
+                        <option value="400000">🚀 極速 (40萬點)</option>
+                        <option value="850000">⚡ 平衡 (85萬點)</option>
+                        <option value="1400000" selected>💎 高畫質 (140萬點 - 推薦)</option>
+                        <option value="2000000">👑 原生極致 (200萬全點)</option>
+                    </select>
+                </div>
+
+                <!-- 畫面超採樣與高斯柔化控制（解決顆粒感） -->
+                <div class="flex items-center gap-1 text-xs">
+                    <span class="text-cyan-300 font-bold">🎨 畫質增強:</span>
+                    <select id="render-quality" class="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-2 py-1 outline-none">
+                        <option value="perf">標準 (1.0x 效能優先)</option>
+                        <option value="hq" selected>細膩柔化 (Retina + 高斯抗鋸齒)</option>
+                        <option value="ultra">超採樣極致 (2.0x + 邊緣融合)</option>
+                    </select>
+                </div>
+
+                <button id="flip-btn" class="px-2.5 py-1.5 text-xs rounded-xl bg-slate-700 hover:bg-slate-600 transition font-medium">
+                    🔄 翻轉上下
+                </button>
+
+                <div class="flex items-center gap-1 text-xs text-emerald-300 font-bold">
+                    <span>🏃 速度:</span>
+                    <input type="range" id="move-speed" min="0.01" max="0.40" step="0.01" value="0.08" class="w-16 accent-emerald-500">
+                    <span id="speed-val" class="w-7 text-right text-white">1.3x</span>
+                </div>
+
+                <div class="flex items-center gap-1 text-xs text-gray-300">
+                    <span>視線高度:</span>
+                    <input type="range" id="ground-offset" min="-6" max="6" step="0.05" value="-0.45" class="w-16 accent-emerald-500">
+                </div>
+
+                <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer">
+                    <input type="checkbox" id="auto-ground-chk" checked class="accent-emerald-500">
+                    <span>自動貼地</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- 電腦版控制介面：左下角方向鍵移動 + 右下角 WASD 轉向 (含按鍵發光提示) -->
+        <div id="desktop-controls" class="hidden">
+            <div class="absolute bottom-8 left-8 flex flex-col gap-2 pointer-auto items-center glass-panel p-4 rounded-2xl">
+                <div class="text-[11px] text-emerald-400 font-bold">🏃 移動腳步 (方向鍵)</div>
+                <div class="grid grid-cols-3 gap-2 w-36">
+                    <div></div>
+                    <button id="btn-forward" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-base font-bold shadow text-white transition-all">⬆️<span class="text-[8px] text-gray-400">前進</span></button>
+                    <div></div>
+                    <button id="btn-left" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-base font-bold shadow text-white transition-all">⬅️<span class="text-[8px] text-gray-400">左移</span></button>
+                    <button id="btn-backward" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-base font-bold shadow text-white transition-all">⬇️<span class="text-[8px] text-gray-400">後退</span></button>
+                    <button id="btn-right" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-base font-bold shadow text-white transition-all">➡️<span class="text-[8px] text-gray-400">右移</span></button>
+                </div>
+            </div>
+
+            <div class="absolute bottom-8 right-8 flex flex-col gap-2 pointer-auto items-center glass-panel p-4 rounded-2xl">
+                <div class="text-[11px] text-amber-400 font-bold">👀 轉動視角 (WASD)</div>
+                <div class="grid grid-cols-3 gap-2 w-36">
+                    <div></div>
+                    <button id="key-w" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold shadow text-amber-300 transition-all">W<span class="text-[8px] text-gray-400">抬頭</span></button>
+                    <div></div>
+                    <button id="key-a" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold shadow text-amber-300 transition-all">A<span class="text-[8px] text-gray-400">原地左轉</span></button>
+                    <button id="key-s" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold shadow text-amber-300 transition-all">S<span class="text-[8px] text-gray-400">低頭</span></button>
+                    <button id="key-d" class="bg-gray-800 border border-gray-600 h-12 rounded-xl flex flex-col items-center justify-center text-xs font-bold shadow text-amber-300 transition-all">D<span class="text-[8px] text-gray-400">原地右轉</span></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 手機版搖桿介面 -->
+        <div id="mobile-controls" class="hidden">
+            <div id="joystick-zone" class="absolute bottom-8 left-8 w-32 h-32 rounded-full glass-panel flex items-center justify-center pointer-auto">
+                <div id="joystick-handle" class="w-14 h-14 bg-emerald-500 rounded-full shadow-lg absolute"></div>
+                <span class="text-[10px] text-gray-400 absolute bottom-2">虛擬搖桿</span>
+            </div>
+            <div class="absolute bottom-8 right-8 flex flex-col gap-2 pointer-auto items-center">
+                <div class="glass-panel px-4 py-2.5 rounded-xl text-xs text-amber-300 text-center font-medium">
+                    👆 於右半螢幕滑動可自由轉頭與上下看
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import * as GaussianSplats3D from '@mkkellogg/gaussian-splats-3d';
+
+        // 預設自動載入同資料夾底下的檔名
+        const DEFAULT_SPZ_FILENAME = './splats-1.spz';
+
+        let scene, camera, renderer, splatViewer = null, splatMesh = null;
+        let cachedRawSpzBuffer = null;
+
+        let moveVector = { x: 0, z: 0 };
+        let rotateAction = { w: false, s: false, a: false, d: false };
+        let isFlipped = true;
+        let moveSpeed = 0.08;
+        let eyeHeightOffset = -0.45;
+        let worldScale = 3.0;
+
+        // 第一人稱相機位置與面向角度
+        let viewerPos = new THREE.Vector3(0, -0.45, 0);
+        let playerYaw = 0;
+        let cameraPitch = 0.0;
+
+        // O(1) 地面高度網格索引
+        let groundGridMap = new Map();
+
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|OperaMini/i.test(navigator.userAgent) || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            if (isMobile) {
+                document.getElementById('mobile-controls').classList.remove('hidden');
+                document.getElementById('quality-preset').value = '400000';
+                document.getElementById('render-quality').value = 'perf';
+                initVirtualJoystick();
+                initTouchLook();
+            } else {
+                document.getElementById('desktop-controls').classList.remove('hidden');
+                initDesktopEvents();
+            }
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050811);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 800);
+
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                powerPreference: 'high-performance'
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            applyRenderResolution();
+            container.appendChild(renderer.domElement);
+
+            bindUIEvents();
+            window.addEventListener('resize', onWindowResize);
+
+            // 開啟網頁時自動嘗試讀取同資料夾下的 splats-1.spz
+            autoLoadDefaultSpz();
+
+            animate();
+        }
+
+        function applyRenderResolution() {
+            const mode = document.getElementById('render-quality').value;
+            if (mode === 'perf') {
+                renderer.setPixelRatio(1.0);
+            } else if (mode === 'hq') {
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.65));
+            } else {
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.0));
+            }
+        }
+
+        // 自動從同目錄載入 splats-1.spz (部署在 GitHub Pages 或伺服器時會自動成功)
+        async function autoLoadDefaultSpz() {
+            const statusEl = document.getElementById('location-status');
+            try {
+                const response = await fetch(DEFAULT_SPZ_FILENAME);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                statusEl.innerText = `⏳ 正在自動下載並解壓縮 ${DEFAULT_SPZ_FILENAME}...`;
+                const ds = new DecompressionStream('gzip');
+                const decompressedStream = response.body.pipeThrough(ds);
+                cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
+                await buildAndRenderSplatScene();
+            } catch (err) {
+                console.log('本地 file:// 模式無法自動 fetch，請點擊右上角手動選擇檔案:', err);
+                statusEl.innerText = `💡 本機直接開啟模式：請點右側「📂 手動載入 .spz」選取 splats-1.spz (上傳至 GitHub 後即會自動載入)`;
+                statusEl.className = 'text-xs text-amber-300 font-medium';
+            }
+        }
+
+        function updateSplatTransform() {
+            if (!splatMesh) return;
+            const s = worldScale;
+            splatMesh.scale.set(s, isFlipped ? -s : s, s);
+        }
+
+        function bindUIEvents() {
+            const spzInput = document.getElementById('spz-input');
+            document.getElementById('load-spz-btn').addEventListener('click', () => spzInput.click());
+            spzInput.addEventListener('change', async (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    const file = e.target.files[0];
+                    const statusEl = document.getElementById('location-status');
+                    statusEl.innerText = `⏳ 正在解壓縮 ${file.name}...`;
+                    const ds = new DecompressionStream('gzip');
+                    const decompressedStream = file.stream().pipeThrough(ds);
+                    cachedRawSpzBuffer = await new Response(decompressedStream).arrayBuffer();
+                    await buildAndRenderSplatScene();
+                }
+            });
+
+            document.getElementById('quality-preset').addEventListener('change', async () => {
+                if (cachedRawSpzBuffer) await buildAndRenderSplatScene();
+            });
+
+            document.getElementById('render-quality').addEventListener('change', async () => {
+                applyRenderResolution();
+                if (cachedRawSpzBuffer) await buildAndRenderSplatScene();
+            });
+
+            document.getElementById('flip-btn').addEventListener('click', () => {
+                isFlipped = !isFlipped;
+                updateSplatTransform();
+            });
+
+            document.getElementById('move-speed').addEventListener('input', (e) => {
+                moveSpeed = parseFloat(e.target.value);
+                const mult = (moveSpeed / 0.06).toFixed(1);
+                document.getElementById('speed-val').innerText = `${mult}x`;
+            });
+
+            document.getElementById('ground-offset').addEventListener('input', (e) => {
+                eyeHeightOffset = parseFloat(e.target.value);
+                viewerPos.y = getGroundHeightFast(viewerPos.x, viewerPos.z);
+            });
+        }
+
+        async function buildAndRenderSplatScene() {
+            if (!cachedRawSpzBuffer) return;
+            const maxBudget = parseInt(document.getElementById('quality-preset').value, 10);
+            const renderMode = document.getElementById('render-quality').value;
+            const statusEl = document.getElementById('location-status');
+            statusEl.innerText = `⏳ 正在建構高畫質 3D 校園場景...`;
+            statusEl.className = 'text-xs text-amber-300 font-bold';
+
+            await new Promise(r => setTimeout(r, 30));
+
+            try {
+                const { splatArrayBuffer, keptPoints, totalPoints } = convertSpzOptimized(cachedRawSpzBuffer, maxBudget, renderMode);
+
+                if (splatViewer) {
+                    scene.remove(splatMesh);
+                    await splatViewer.dispose();
+                    splatViewer = null;
+                }
+
+                // 根據畫質設定開啟高斯抗鋸齒與柔和核函數調整，消除銳利顆粒感
+                const isHQ = renderMode !== 'perf';
+                splatViewer = new GaussianSplats3D.DropInViewer({
+                    gpuAcceleratedSort: false,
+                    sharedMemoryForWorkers: false,
+                    integerBasedSort: true,
+                    dynamicScene: false,
+                    antialiased: isHQ,
+                    focalAdjustment: renderMode === 'ultra' ? 1.22 : (isHQ ? 1.14 : 1.05),
+                    maxScreenSpaceSplatSize: renderMode === 'ultra' ? 256 : 160
+                });
+
+                const blob = new Blob([splatArrayBuffer], { type: 'application/octet-stream' });
+                const blobUrl = URL.createObjectURL(blob);
+
+                await splatViewer.addSplatScenes([{
+                    path: blobUrl,
+                    format: GaussianSplats3D.SceneFormat.Splat,
+                    splatAlphaRemovalThreshold: isHQ ? 12 : 25
+                }], false);
+
+                splatMesh = splatViewer;
+                scene.add(splatMesh);
+                updateSplatTransform();
+
+                viewerPos.y = getGroundHeightFast(viewerPos.x, viewerPos.z);
+
+                statusEl.innerText = `✅ 校園場景載入完成！目前渲染 ${keptPoints.toLocaleString()} 點 (原 ${totalPoints.toLocaleString()} 點)`;
+                statusEl.className = 'text-xs text-emerald-300 font-bold';
+            } catch (err) {
+                console.error('載入錯誤:', err);
+                statusEl.innerText = `❌ 載入失敗: ${err.message}`;
+                statusEl.className = 'text-xs text-red-400 font-bold';
+            }
+        }
+
+        function convertSpzOptimized(buffer, maxBudget, renderMode) {
+            const view = new DataView(buffer);
+            const bytes = new Uint8Array(buffer);
+            const magic = view.getUint32(0, true);
+            const version = view.getUint32(4, true);
+            const numPoints = view.getUint32(8, true);
+            const fractionalBits = bytes[13];
+
+            if (magic !== 0x5053474e || numPoints <= 0) {
+                throw new Error('非標準 NGSP (.spz) 檔案');
+            }
+
+            let offset = 16;
+
+            const positions = new Float32Array(numPoints * 3);
+            const scaleFactor = 1.0 / (1 << fractionalBits);
+            if (version >= 2) {
+                for (let i = 0; i < numPoints * 3; i++) {
+                    let val = bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16);
+                    if (val & 0x800000) val |= 0xff000000;
+                    positions[i] = val * scaleFactor;
+                    offset += 3;
+                }
+            } else {
+                for (let i = 0; i < numPoints * 3; i++) {
+                    positions[i] = decodeFloat16(view.getUint16(offset, true));
+                    offset += 2;
+                }
+            }
+
+            const alphas = new Uint8Array(buffer, offset, numPoints);
+            offset += numPoints;
+
+            const rawColors = new Uint8Array(buffer, offset, numPoints * 3);
+            offset += numPoints * 3;
+
+            const rawScales = new Uint8Array(buffer, offset, numPoints * 3);
+            offset += numPoints * 3;
+
+            const rawRots = new Uint8Array(buffer, offset, numPoints * 3);
+
+            const alphaCutoff = renderMode === 'perf' ? 26 : 12;
+            const validIndices = [];
+            groundGridMap.clear();
+
+            for (let i = 0; i < numPoints; i++) {
+                const a = alphas[i];
+                if (a < alphaCutoff) continue;
+
+                const px = positions[i * 3];
+                const py = positions[i * 3 + 1];
+                const pz = positions[i * 3 + 2];
+                if (Math.abs(px) > 150 || Math.abs(py) > 150 || Math.abs(pz) > 150) continue;
+
+                validIndices.push(i);
+
+                if (a > 190 && Math.abs(px) < 25 && Math.abs(pz) < 25) {
+                    const gx = Math.round(px * 2);
+                    const gz = Math.round(pz * 2);
+                    const key = `${gx},${gz}`;
+                    const prevY = groundGridMap.get(key);
+                    if (prevY === undefined || py > prevY) {
+                        groundGridMap.set(key, py);
+                    }
+                }
+            }
+
+            const totalValid = validIndices.length;
+            const keepRatio = Math.min(1.0, maxBudget / Math.max(1, totalValid));
+            // 微調橢圓重疊係數，使磁磚與樹葉邊緣更加柔順連貫
+            const smoothBoost = renderMode === 'ultra' ? 1.15 : (renderMode === 'hq' ? 1.08 : 1.0);
+            const areaCompensation = Math.min(1.5, Math.pow(1.0 / keepRatio, 0.25)) * smoothBoost;
+
+            const keptCount = Math.min(totalValid, maxBudget);
+            const outBuffer = new ArrayBuffer(keptCount * 32);
+            const outFloat = new Float32Array(outBuffer);
+            const outUint8 = new Uint8Array(outBuffer);
+
+            const shC0 = 0.28209479177387814;
+            const stride = totalValid / keptCount;
+
+            for (let k = 0; k < keptCount; k++) {
+                const i = validIndices[Math.floor(k * stride)];
+
+                const fBase = k * 8;
+                outFloat[fBase + 0] = positions[i * 3 + 0];
+                outFloat[fBase + 1] = positions[i * 3 + 1];
+                outFloat[fBase + 2] = positions[i * 3 + 2];
+
+                outFloat[fBase + 3] = Math.exp(rawScales[i * 3 + 0] / 16.0 - 10.0) * areaCompensation;
+                outFloat[fBase + 4] = Math.exp(rawScales[i * 3 + 1] / 16.0 - 10.0) * areaCompensation;
+                outFloat[fBase + 5] = Math.exp(rawScales[i * 3 + 2] / 16.0 - 10.0) * areaCompensation;
+
+                const bBase = k * 32;
+                const c0 = ((rawColors[i * 3 + 0] / 255.0) - 0.5) / 0.15 * shC0 + 0.5;
+                const c1 = ((rawColors[i * 3 + 1] / 255.0) - 0.5) / 0.15 * shC0 + 0.5;
+                const c2 = ((rawColors[i * 3 + 2] / 255.0) - 0.5) / 0.15 * shC0 + 0.5;
+
+                outUint8[bBase + 24] = Math.max(0, Math.min(255, Math.round(c0 * 255)));
+                outUint8[bBase + 25] = Math.max(0, Math.min(255, Math.round(c1 * 255)));
+                outUint8[bBase + 26] = Math.max(0, Math.min(255, Math.round(c2 * 255)));
+                outUint8[bBase + 27] = alphas[i];
+
+                const rx = (rawRots[i * 3 + 0] / 127.5) - 1.0;
+                const ry = (rawRots[i * 3 + 1] / 127.5) - 1.0;
+                const rz = (rawRots[i * 3 + 2] / 127.5) - 1.0;
+                const rw = Math.sqrt(Math.max(0.0, 1.0 - (rx * rx + ry * ry + rz * rz)));
+
+                outUint8[bBase + 28] = Math.max(0, Math.min(255, Math.round(rw * 128 + 128)));
+                outUint8[bBase + 29] = Math.max(0, Math.min(255, Math.round(rx * 128 + 128)));
+                outUint8[bBase + 30] = Math.max(0, Math.min(255, Math.round(ry * 128 + 128)));
+                outUint8[bBase + 31] = Math.max(0, Math.min(255, Math.round(rz * 128 + 128)));
+            }
+
+            return { splatArrayBuffer: outBuffer, keptPoints: keptCount, totalPoints: numPoints };
+        }
+
+        function getGroundHeightFast(worldX, worldZ) {
+            const autoGround = document.getElementById('auto-ground-chk').checked;
+            if (!autoGround || groundGridMap.size === 0) {
+                return eyeHeightOffset;
+            }
+            const s = worldScale;
+            const gx = Math.round((worldX / s) * 2);
+            const gz = Math.round((worldZ / s) * 2);
+            const rawY = groundGridMap.get(`${gx},${gz}`);
+            if (rawY !== undefined) {
+                const wy = (isFlipped ? -rawY : rawY) * s;
+                if (wy > -6 && wy < 2) {
+                    return wy + eyeHeightOffset + 1.1;
+                }
+            }
+            return eyeHeightOffset;
+        }
+
+        function decodeFloat16(uint16) {
+            const s = (uint16 & 0x8000) >> 15;
+            const e = (uint16 & 0x7C00) >> 10;
+            const f = uint16 & 0x03FF;
+            if (e === 0) return (s ? -1 : 1) * Math.pow(2, -14) * (f / Math.pow(2, 10));
+            if (e === 0x1F) return f ? NaN : ((s ? -1 : 1) * Infinity);
+            return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + (f / Math.pow(2, 10)));
+        }
+
+        function initDesktopEvents() {
+            let moveDirection = { forward: false, backward: false, left: false, right: false };
+            function updateMoveVector() {
+                moveVector.x = 0; moveVector.z = 0;
+                if (moveDirection.forward) moveVector.z -= 1;
+                if (moveDirection.backward) moveVector.z += 1;
+                if (moveDirection.left) moveVector.x -= 1;
+                if (moveDirection.right) moveVector.x += 1;
+            }
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (e.key === 'ArrowUp') { moveDirection.forward = true; highlightButton('forward', true); }
+                if (e.key === 'ArrowDown') { moveDirection.backward = true; highlightButton('backward', true); }
+                if (e.key === 'ArrowLeft') { moveDirection.left = true; highlightButton('left', true); }
+                if (e.key === 'ArrowRight') { moveDirection.right = true; highlightButton('right', true); }
+                if (k === 'w') { rotateAction.w = true; highlightKey('w', true); }
+                if (k === 's') { rotateAction.s = true; highlightKey('s', true); }
+                if (k === 'a') { rotateAction.a = true; highlightKey('a', true); }
+                if (k === 'd') { rotateAction.d = true; highlightKey('d', true); }
+                updateMoveVector();
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (e.key === 'ArrowUp') { moveDirection.forward = false; highlightButton('forward', false); }
+                if (e.key === 'ArrowDown') { moveDirection.backward = false; highlightButton('backward', false); }
+                if (e.key === 'ArrowLeft') { moveDirection.left = false; highlightButton('left', false); }
+                if (e.key === 'ArrowRight') { moveDirection.right = false; highlightButton('right', false); }
+                if (k === 'w') { rotateAction.w = false; highlightKey('w', false); }
+                if (k === 's') { rotateAction.s = false; highlightKey('s', false); }
+                if (k === 'a') { rotateAction.a = false; highlightKey('a', false); }
+                if (k === 'd') { rotateAction.d = false; highlightKey('d', false); }
+                updateMoveVector();
+            });
+
+            ['forward', 'backward', 'left', 'right'].forEach(dir => {
+                const btn = document.getElementById(`btn-${dir}`);
+                if (btn) {
+                    btn.addEventListener('mousedown', () => { moveDirection[dir] = true; updateMoveVector(); highlightButton(dir, true); });
+                    btn.addEventListener('mouseup', () => { moveDirection[dir] = false; updateMoveVector(); highlightButton(dir, false); });
+                    btn.addEventListener('mouseleave', () => { moveDirection[dir] = false; updateMoveVector(); highlightButton(dir, false); });
+                }
+            });
+
+            ['w', 'a', 's', 'd'].forEach(k => {
+                const btn = document.getElementById(`key-${k}`);
+                if (btn) {
+                    btn.addEventListener('mousedown', () => { rotateAction[k] = true; highlightKey(k, true); });
+                    btn.addEventListener('mouseup', () => { rotateAction[k] = false; highlightKey(k, false); });
+                    btn.addEventListener('mouseleave', () => { rotateAction[k] = false; highlightKey(k, false); });
+                }
+            });
+        }
+
+        function initVirtualJoystick() {
+            const zone = document.getElementById('joystick-zone');
+            const handle = document.getElementById('joystick-handle');
+            let maxDist = 40, touchId = null;
+            zone.addEventListener('touchstart', (e) => {
+                if (touchId !== null) return;
+                touchId = e.changedTouches[0].identifier;
+            });
+            zone.addEventListener('touchmove', (e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const touch = e.changedTouches[i];
+                    if (touch.identifier === touchId) {
+                        const rect = zone.getBoundingClientRect();
+                        let dx = touch.clientX - (rect.left + rect.width / 2);
+                        let dy = touch.clientY - (rect.top + rect.height / 2);
+                        let dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
+                        handle.style.transform = `translate(${dx}px, ${dy}px)`;
+                        moveVector.x = dx / maxDist; moveVector.z = dy / maxDist;
+                    }
+                }
+            });
+            const resetJoystick = (e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === touchId) {
+                        touchId = null; handle.style.transform = `translate(0px, 0px)`;
+                        moveVector.x = 0; moveVector.z = 0;
+                    }
+                }
+            };
+            zone.addEventListener('touchend', resetJoystick);
+            zone.addEventListener('touchcancel', resetJoystick);
+        }
+
+        function initTouchLook() {
+            let lastX = 0, lastY = 0, isSwiping = false;
+            window.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                if (touch.clientX > window.innerWidth / 2) { lastX = touch.clientX; lastY = touch.clientY; isSwiping = true; }
+            });
+            window.addEventListener('touchmove', (e) => {
+                if (!isSwiping) return;
+                const touch = e.touches[0];
+                if (touch.clientX > window.innerWidth / 2) {
+                    playerYaw -= (touch.clientX - lastX) * 0.005;
+                    cameraPitch = Math.max(-1.0, Math.min(1.0, cameraPitch - (touch.clientY - lastY) * 0.005));
+                    lastX = touch.clientX; lastY = touch.clientY;
+                }
+            });
+            window.addEventListener('touchend', () => { isSwiping = false; });
+        }
+
+        function highlightButton(dir, active) {
+            const btn = document.getElementById(`btn-${dir}`);
+            if (btn) btn.classList.toggle('key-active', active);
+        }
+        function highlightKey(key, active) {
+            const el = document.getElementById(`key-${key}`);
+            if (el) el.classList.toggle('key-active', active);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 500) {
+                const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+                const fpsEl = document.getElementById('fps-counter');
+                fpsEl.innerText = `${fps} FPS`;
+                fpsEl.className = fps >= 45 ? 'text-sm font-extrabold text-emerald-400' : (fps >= 25 ? 'text-sm font-extrabold text-amber-400' : 'text-sm font-extrabold text-red-400');
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+
+            // 1. 第一人稱 WASD 轉頭：A 原地左轉、D 原地右轉、W 抬頭、S 低頭
+            const rotSpeed = 0.026;
+            if (rotateAction.a) playerYaw += rotSpeed;
+            if (rotateAction.d) playerYaw -= rotSpeed;
+            if (rotateAction.w) cameraPitch = Math.min(1.0, cameraPitch + rotSpeed);
+            if (rotateAction.s) cameraPitch = Math.max(-1.0, cameraPitch - rotSpeed);
+
+            // 2. 第一人稱方向鍵移動（永遠朝當前視線正前方直走/橫移）
+            const forwardX = -Math.sin(playerYaw);
+            const forwardZ = -Math.cos(playerYaw);
+            const rightX = Math.cos(playerYaw);
+            const rightZ = -Math.sin(playerYaw);
+
+            const forwardAmount = -moveVector.z;
+            const strafeAmount = moveVector.x;
+
+            if (forwardAmount !== 0 || strafeAmount !== 0) {
+                viewerPos.x += (forwardX * forwardAmount + rightX * strafeAmount) * moveSpeed;
+                viewerPos.z += (forwardZ * forwardAmount + rightZ * strafeAmount) * moveSpeed;
+            }
+
+            const targetY = getGroundHeightFast(viewerPos.x, viewerPos.z);
+            viewerPos.y += (targetY - viewerPos.y) * 0.2;
+
+            // 3. 更新第一人稱相機位置與視線目標
+            camera.position.copy(viewerPos);
+            const lookDirX = forwardX * Math.cos(cameraPitch);
+            const lookDirY = Math.sin(cameraPitch);
+            const lookDirZ = forwardZ * Math.cos(cameraPitch);
+
+            camera.lookAt(
+                viewerPos.x + lookDirX,
+                viewerPos.y + lookDirY,
+                viewerPos.z + lookDirZ
+            );
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
